@@ -1,5 +1,5 @@
 from manim import *
-from fractions import Fraction
+from sympy import sympify
 
 
 class Test(Scene):
@@ -14,7 +14,7 @@ class Test(Scene):
 class GaussJordan(Scene):
     def construct(self):
         mat = [[1, 2, -1, 1, 2], [1, 0, 1, 3, 0], [2, 2, 1, 2, 1]]
-        mat = [[Fraction(m) for m in mm] for mm in mat]
+        mat = [[sympify(m) for m in mm] for mm in mat]
         n, p = len(mat), len(mat[0])
         mob_mat = Matrix(
             mat,
@@ -364,8 +364,8 @@ class GaussJordanUnique(Scene):
 
 class System(Scene):
     def construct(self):
-        mat = [[1, 0, 2, 1, 4], [3, 2, 10, 5, 4], [2, -1, 2, 2, 13], [3, -1, 4, 4, 18]]
-        mat = [[Fraction(m) for m in mm] for mm in mat]
+        mat = [[1, -1, 1, 1, 0], [3, -3, 3, 2, 0], [1, -1, 1, 0, 0], [5, -5, 5, 7, 0]]
+        mat = [[sympify(m) for m in mm] for mm in mat]
         n, p = len(mat), len(mat[0])
 
         mob_mat = Matrix(
@@ -478,14 +478,17 @@ class System(Scene):
     def transvection(self, mat, rows, i, j, alpha, current_col):
         """Li <- Li + alpha Lj"""
         n, p = len(mat), len(mat[0])
-        if alpha == 1:
-            template = "$L_{i} \leftarrow L_{i} + L_{j}$"
-        elif alpha == -1:
-            template = "$L_{i} \leftarrow L_{i} - L_{j}$"
-        elif alpha > 0:
-            template = "$L_{i} \leftarrow L_{i} + {alpha}L_{j}$"
-        else:
-            template = "$L_{i} \leftarrow L_{i} {alpha}L_{j}$"
+        try:
+            if alpha == 1:
+                template = "$L_{i} \leftarrow L_{i} + L_{j}$"
+            elif alpha == -1:
+                template = "$L_{i} \leftarrow L_{i} - L_{j}$"
+            elif alpha > 0:
+                template = "$L_{i} \leftarrow L_{i} + {alpha}L_{j}$"
+            else:
+                template = "$L_{i} \leftarrow L_{i} {alpha}L_{j}$"
+        except TypeError:
+            template = "$L_{i} \leftarrow L_{i} + ({alpha})L_{j}$"
 
         text_string = "On effectue l'opération " + template.format(
             i=i + 1, j=j + 1, alpha=alpha
@@ -512,7 +515,10 @@ class System(Scene):
         simple_arrow = VGroup(
             Line(D, C, buff=0), Line(C, B, buff=0), Arrow(B, A, buff=0)
         )
-        text_arrow = "$\\times$ {alpha}" if alpha > 0 else "$\\times$ ({alpha})"
+        try:
+            text_arrow = "$\\times$ {alpha}" if alpha > 0 else "$\\times$ ({alpha})"
+        except TypeError:
+            text_arrow = "$\\times$ ({alpha})"
         text_arrow = Tex(text_arrow.format(alpha=alpha)).next_to(simple_arrow[1], LEFT)
 
         self.play(FadeIn(text))
@@ -558,7 +564,10 @@ class System(Scene):
         A = rows[i].get_left() + LEFT
         B = A + LEFT
         arrow = Arrow(B, A, buff=0)
-        text_arrow = "$\\times$ {alpha}" if alpha > 0 else "$\\times$ ({alpha})"
+        try:
+            text_arrow = "$\\times$ {alpha}" if alpha > 0 else "$\\times$ ({alpha})"
+        except TypeError:
+            text_arrow = "$\\times$ ({alpha})"
         text_arrow = Tex(text_arrow.format(alpha=alpha)).next_to(arrow, LEFT)
 
         self.play(FadeIn(text))
@@ -616,7 +625,7 @@ class System(Scene):
         elif coeff > 0:
             prefix = "+"
         else:
-            prefix = "-"
+            prefix = ""
         if coeff == 0:
             return ""
         elif coeff == -1:
@@ -626,8 +635,8 @@ class System(Scene):
         else:
             return prefix + str(coeff) + ukn
 
-    def sec_mem(self, coeff):
-        if coeff == 0:
+    def sec_mem(self, coeff, ind=1):
+        if coeff == 0 and ind != 1:
             return ""
         else:
             return str(coeff)
@@ -638,12 +647,21 @@ class System(Scene):
 
     def get_system_from_mat(self, mat, unknowns):
         n, p = len(mat), len(mat[0])
-        system_rows = [
-            [self.coeff_system(mat[i][j], unknowns[j], j) for j in range(p - 1)]
-            for i in range(n)
-        ]
+        system_rows = []
+        for i in range(n):
+            if mat[i] != [0 for j in range(p)]:
+                ind = 0
+                L = []
+                for j in range(p - 1):
+                    L.append(self.coeff_system(mat[i][j], unknowns[j], ind))
+                    if mat[i][j] != 0:
+                        ind = 1
+                system_rows.append(L)
         system_string = "".join(
-            [self.row_system(system_rows[i], mat[i][-1], n - 1 - i) for i in range(n)]
+            [
+                self.row_system(system_rows[i], mat[i][-1], n - 1 - i)
+                for i in range(len(system_rows))
+            ]
         )
         prefix = "\\begin{cases} "
         suffix = " \\end{cases}"
@@ -659,7 +677,7 @@ class System(Scene):
         for i in range(n):
             pivot = next((j for j, x in enumerate(mat[i]) if x), None)
             if pivot is not None:
-                s = self.sec_mem(mat[i][-1])
+                s = self.sec_mem(mat[i][-1], sum([abs(m) for m in mat[i][:-1]]))
                 ind = 0
                 for j in range(pivot + 1, p - 1):
                     s += self.coeff_system(-mat[i][j], unknowns[j], ind)
@@ -672,10 +690,10 @@ class System(Scene):
             unknowns[i] for i in range(len(unknowns) - 1) if i not in liste_rangs_pivots
         ]
 
-        if len(parametres) != 0:
-            return Tex(
-                "L'ensemble des solutions du système est donc : \n"
-                + "$\\left\\{ ("
+        if len(parametres) > 1:
+            phrase_intro = Tex("L'ensemble des solutions du système est donc :")
+            sols = Tex(
+                "$\\left\\{ ("
                 + ",".join(liste_solutions)
                 + "), ("
                 + ",".join(parametres)
@@ -684,8 +702,23 @@ class System(Scene):
                     num_param=len(parametres),
                 )
                 + " \\right\\}$"
-            )
+            ).next_to(phrase_intro, DOWN)
+            return VGroup(phrase_intro, sols)
 
+        elif len(parametres) == 1:
+            phrase_intro = Tex("L'ensemble des solutions du système est donc :")
+            sols = Tex(
+                "$\\left\\{ ("
+                + ",".join(liste_solutions)
+                + "), "
+                + parametres[0]
+                + " \\in \\mathbb{{R}}".format(
+                    param=str(tuple(parametres)),
+                    num_param=len(parametres),
+                )
+                + " \\right\\}$"
+            ).next_to(phrase_intro, DOWN)
+            return VGroup(phrase_intro, sols)
         else:
             return Tex(
                 "L'unique solution du système est $({})$".format(
